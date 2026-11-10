@@ -1,0 +1,74 @@
+{
+    experiment: "twopath",
+
+    docker_image: {
+        tag: "eclipse/zenoh:1.4.0",
+        clean_first: false
+    },
+
+    volume: "../zenoh",
+
+    nodes: {
+        "0": {
+            role: "pub",
+            zid: {set: true, value: "aa4320990a90d745a86034516feef351"},
+            listen_endpoints: [
+                "tcp/10.0.9.9:8000", // 0
+            ],
+        },
+        "1": {
+            zid: {set: true, value: "a10274ef26525ccdb47947a9dfdd7123"},
+            listen_endpoints: [
+                "tcp/10.0.1.1:8001", // 0
+                "tcp/10.0.4.1:8001", // 1
+                "tcp/10.0.9.1:8001", // 0
+            ],
+        },
+        "2": {
+            zid: {set: true, value: "bef96187ff749ce9379ef4257d963456"},
+            listen_endpoints: [
+                "tcp/10.0.1.2:8002", // 0
+                "tcp/10.0.2.2:8002"  // 1
+            ],
+        },
+        "3": {
+            zid: {set: true, value: "c16a6fbfd2e362029d2ff8012bbe3bc1"},
+            listen_endpoints: [
+                "tcp/10.0.6.3:8003", // 0
+                "tcp/10.0.3.3:8003", // 1
+                "tcp/10.0.5.3:8003"  // 2
+            ],
+        },
+        "4": {
+            zid: {set: true, value: "d459fc7588cc23338bf78e1a8511ab07"},
+            listen_endpoints: [
+                "tcp/10.0.4.4:8004", // 0
+                "tcp/10.0.5.4:8004"  // 1
+            ],
+        },
+        "5": {
+            role: "sub",
+            zid: {set: true, value: "ecdb3c9506e7a8574ec817ffb8f3b225"},
+            listen_endpoints: [
+                "tcp/10.0.3.5:8005", // 0
+            ],
+        },
+        "6": {
+            zid: {set: true, value: "f6eeb6954eed369cefcdc258c70ef4c8"},
+            listen_endpoints: [
+                "tcp/10.0.2.6:8006", // 0
+                "tcp/10.0.6.6:8006"  // 1
+            ],
+        },
+    },
+    links: [
+        // router, endpoint index
+        // { a: "0", a_idx: 0, b: "1", b_idx: 2 , cap: 100},
+        { a: "1", a_idx: 0, b: "2", b_idx: 0 , cap: 100},
+        { a: "1", a_idx: 1, b: "4", b_idx: 0 , cap: 100},
+        { a: "2", a_idx: 1, b: "6", b_idx: 0 , cap: 100},
+        { a: "3", a_idx: 0, b: "6", b_idx: 1 , cap: 100},
+        { a: "3", a_idx: 2, b: "4", b_idx: 1 , cap: 3},
+        // { a: "3", a_idx: 1, b: "5", b_idx: 0 , cap: 100},
+    ]
+}
