@@ -8,7 +8,9 @@ import json5
 import time
 from datetime import datetime
 
-def signal_handler(sig):
+def signal_handler(sig, frame):
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
     print(f"\nReceived signal:{sig}, leaving...\n")
     
     if node_list:
@@ -45,7 +47,10 @@ class Node():
         self.cleanup()
         
         self.run_docker()
-        time.sleep(0.5) 
+        # docker run is sent to tmux asynchronously; wait until the container exists
+        while subprocess.run(f"docker inspect {self.container_name}", shell=True,
+                             capture_output=True).returncode != 0:
+            time.sleep(0.5)
         
         self.setup_network_interfaces()
         self.launch_zenoh()
