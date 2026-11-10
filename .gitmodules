@@ -1,0 +1,9 @@
+[submodule "zenoh"]
+	path = zenoh
+	url = https://github.com/eclipse-zenoh/zenoh.git
+[submodule "ns-3-dev"]
+	path = ns-3-dev
+	url = https://gitlab.com/nsnam/ns-3-dev.git
+[submodule "zenohd-auto-deploy"]
+	path = zenohd-auto-deploy
+	url = git@github.com:hermanbr/zenohd-auto-deploy.git

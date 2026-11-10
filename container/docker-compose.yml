@@ -1,0 +1,17 @@
+services:
+  ns3-sim:
+    build: .
+    privileged: true
+    network_mode: host
+    pid: host
+    environment:
+      - TZ=Oslo/Norway
+      - HOST_PROJECT_DIR=${HOST_PROJECT_DIR:-${PWD}/..}
+      - CROSS_CONTAINER_IN_CONTAINER=1
+    volumes:
+      - ..:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/localtime:/etc/localtime:ro
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
