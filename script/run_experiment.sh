@@ -7,6 +7,10 @@ export SUDO_PASSWORD=""  # ./ns3 --enable-sudo won't prompt (passwordless sudo o
 
 script/build_ns3.sh "$1"
 
+# remove old containers and tap stuff if any
+docker rm -f $(docker ps -aq --filter name=zenohd_) >/dev/null 2>&1 || true
+for i in $(ip -br link | awk '/^(br_|tap_|internal_)/{sub(/@.*/,"",$1); print $1}'); do sudo ip link del "$i"; done
+
 (cd zenohd-auto-deploy && exec python3 launch_routers.py) &
 ZENOH_PID=$!
 trap 'kill -TERM $ZENOH_PID 2>/dev/null; wait $ZENOH_PID' EXIT

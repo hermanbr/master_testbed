@@ -1,0 +1,69 @@
+{
+    // Dumbbell: N0-N2 on left LAN -> router N3 <-> router N4 -> N5-N7 on right LAN.
+    // IP last octet = 10 + node id. Must match zenoh.cc.
+    experiment: "dumbbell",
+
+    docker_image: {
+        tag: "eclipse/zenoh:1.4.0",
+        clean_first: false
+    },
+
+    volume: "../zenoh",
+
+    nodes: {
+        // ---- Left side, 10.0.1.0/24 ----
+        "0": {
+            role: "pub",
+            zid: {set: true, value: "aa4320990a90d745a86034516feef351"},
+            listen_endpoints: ["tcp/10.0.1.10:8000"],
+        },
+        "1": {
+            role: "sub",
+            zid: {set: true, value: "a10274ef26525ccdb47947a9dfdd7123"},
+            listen_endpoints: ["tcp/10.0.1.11:8001"],
+        },
+        "2": {
+            role: "sub",
+            zid: {set: true, value: "bef96187ff749ce9379ef4257d963456"},
+            listen_endpoints: ["tcp/10.0.1.12:8002"],
+        },
+
+        // ---- Routers ----
+        "3": {
+            zid: {set: true, value: "c16a6fbfd2e362029d2ff8012bbe3bc1"},
+            listen_endpoints: [
+                "tcp/10.0.1.13:8003", // 0: left LAN
+                "tcp/10.0.3.13:8003", // 1: bottleneck
+            ],
+        },
+        "4": {
+            zid: {set: true, value: "d459fc7588cc23338bf78e1a8511ab07"},
+            listen_endpoints: [
+                "tcp/10.0.2.14:8004", // 0: right LAN
+                "tcp/10.0.3.14:8004", // 1: bottleneck
+            ],
+        },
+
+        // ---- Right side, 10.0.2.0/24 ----
+        "5": {
+            role: "pub",
+            zid: {set: true, value: "ecdb3c9506e7a8574ec817ffb8f3b225"},
+            listen_endpoints: ["tcp/10.0.2.15:8005"],
+        },
+        "6": {
+            role: "sub",
+            zid: {set: true, value: "f6eeb6954eed369cefcdc258c70ef4c8"},
+            listen_endpoints: ["tcp/10.0.2.16:8006"],
+        },
+        "7": {
+            role: "sub",
+            zid: {set: true, value: "07a1c3e5b2d4f6081a3c5e7f9b1d3f50"},
+            listen_endpoints: ["tcp/10.0.2.17:8007"],
+        },
+    },
+
+    links: [
+        // Only router <-> router. Leaves find their router via multicast scouting.
+        { a: "3", a_idx: 1, b: "4", b_idx: 1, cap: 10 },
+    ]
+}
