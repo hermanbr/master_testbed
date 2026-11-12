@@ -8,6 +8,16 @@ import json5
 import time
 from datetime import datetime
 
+# Protocol to run in the containers: "zenoh" (default) or "mqtt". Set by script/run_experiment.sh.
+PROTOCOL = os.environ.get("PROTOCOL", "zenoh")
+MQTT_IMAGE = "eclipse-mosquitto:2.0.20"
+
+def ep_ip(ep):
+    return ep.split('/')[1].split(':')[0]  # "tcp/10.0.1.13:8003" -> "10.0.1.13"
+
+def ep_subnet(ep):
+    return ep_ip(ep).rsplit('.', 1)[0]     # "tcp/10.0.1.13:8003" -> "10.0.1"
+
 def signal_handler(sig, frame):
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
@@ -53,8 +63,47 @@ class Node():
             time.sleep(0.5)
         
         self.setup_network_interfaces()
-        self.launch_zenoh()
-    
+        if PROTOCOL == "mqtt":
+            self.launch_mqtt()
+        else:
+            self.launch_zenoh()
+
+    def launch_mqtt(self):
+        launch_cmd = f"docker exec -it {self.container_name} "
+
+        if self.role in ("pub", "sub"):
+            # MQTT has no discovery: use the broker (router node) on the same /24 as this node
+            net = ep_subnet(self.listen_endpoints[0])
+            broker = next(ep_ip(ep) for n in nodes.values() if n.get("role", "router") == "router"
+                          for ep in n["listen_endpoints"] if ep_subnet(ep) == net)
+            if self.role == "pub":
+                print(f"Launching MQTT publisher {self.container_name} -> {broker}")
+                launch_cmd += (f'mosquitto_pub -d -h {broker} -t demo/example/mqtt-pub -m "Pub from MQTT {self.id}"'
+                               f' --repeat 1000000 --repeat-delay 1')
+            else:
+                print(f"Launching MQTT subscriber {self.container_name} -> {broker}")
+                launch_cmd += f'mosquitto_sub -h {broker} -t "demo/example/#" -F "%U %t %p"'
+            # mosquitto clients exit if the first connect fails (e.g. before ns-3 runs); retry every second
+            launch_cmd = f"until {launch_cmd}; do sleep 1; done"
+        else:
+            # Broker: listen on all interfaces, bridge to each router this node is side "a" of in links
+            conf = "listener 1883\nallow_anonymous true\nlog_dest stdout\n"
+            for link in links:
+                peer = nodes[link["b"]]
+                if link.get("a") == str(self.id) and peer.get("role", "router") == "router":
+                    peer_ip = ep_ip(peer["listen_endpoints"][link["b_idx"]])
+                    conf += f"\nconnection bridge_{self.id}_{link['b']}\naddress {peer_ip}:1883\ntopic # both 0\n"
+            conf_path = f"{base_dir}/{self.container_name}.conf"
+            with open(conf_path, "w") as f:
+                f.write(conf)
+            # absolute path: docker cp would read the ':' in the timestamp dir as "container:path"
+            self.run_shell_command(f"docker cp {os.path.abspath(conf_path)} {self.container_name}:/mosquitto.conf")
+            print(f"Launching MQTT broker {self.container_name}")
+            launch_cmd += "mosquitto -c /mosquitto.conf -v"
+
+        launch_cmd += f" > >(tee ./{self.container_name}.log) 2> >(tee ./{self.container_name}_err.log >&2)"
+        self.run_shell_command(f"tmux send-keys -t {self.container_name} '{launch_cmd}' C-m")
+
     def launch_zenoh(self):
         launch_cmd = f"docker exec -e RUST_LOG=trace -it {self.container_name} ./zenoh/target/x86_64-unknown-linux-musl/fast/"
         
@@ -209,15 +258,15 @@ if __name__ == "__main__":
             network_config = json5.load(config_file)
         experiment_name = network_config.get('experiment')
         image_config = network_config.get('docker_image')
-        image = image_config.get('tag')
+        image = MQTT_IMAGE if PROTOCOL == "mqtt" else image_config.get('tag')
         image_clean = image_config.get('clean_first')
         user_name = network_config.get('user_name')
         nodes = network_config.get('nodes', {})
         links = network_config.get('links', [])
 
         run_ts = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
-        base_dir = f"experiment_data/{experiment_name}/{run_ts}"
-        # os.makedirs(base_dir, exist_ok=False)
+        base_dir = f"experiment_data/{PROTOCOL}/{experiment_name}/{run_ts}"
+        os.makedirs(base_dir, exist_ok=True)
         # os.chdir(base_dir)
         
         node_list = []    
