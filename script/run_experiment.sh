@@ -1,11 +1,12 @@
 #!/bin/bash
-# Usage: script/run_experiment.sh <experiment_name>
+# Usage: script/run_experiment.sh <zenoh|mqtt> <topology>
 set -e
-[ -z "$1" ] && { echo "usage: $0 <experiment_name>"; exit 1; }
+[[ "$1" =~ ^(zenoh|mqtt)$ && -n "$2" ]] || { echo "usage: $0 <zenoh|mqtt> <topology>"; exit 1; }
 cd "$(dirname "$0")/.."
 export SUDO_PASSWORD=""  # ./ns3 --enable-sudo won't prompt (passwordless sudo on this host)
+export PROTOCOL="$1"     # read by zenohd-auto-deploy/launch_routers.py
 
-script/build_ns3.sh "$1"
+script/build_ns3.sh "$2"
 
 # remove old containers and tap stuff if any
 docker rm -f $(docker ps -aq --filter name=zenohd_) >/dev/null 2>&1 || true
