@@ -8,8 +8,8 @@ Master-thesis testbed for **comparing service discovery protocols for embedded d
 
 - **ns-3** runs in real-time mode (`RealtimeSimulatorImpl`) and models the radio/network topology.
 - Real protocol implementations run in **Docker containers**, attached to ns-3 "ghost nodes" via **TAP bridges** (`tap-bridge` module, `UseBridge` mode).
-- **Zenoh** is the first protocol under test; more service discovery protocols will be added.
-- Measurements/logs are written to `zenohd-auto-deploy/experiment_data/<experiment>/<timestamp>/` (`<experiment>` is the `experiment` field in NETWORK_CONFIG, not the folder name).
+- Protocols under test: **Zenoh** and **MQTT** (Mosquitto, static broker address). Selected per run with `PROTOCOL` (see Workflow); same topology files for both.
+- Measurements/logs are written to `zenohd-auto-deploy/experiment_data/<protocol>/<experiment>/<timestamp>/` (`<experiment>` is the `experiment` field in NETWORK_CONFIG, not the folder name).
 
 ## Repository layout
 
@@ -28,6 +28,9 @@ Master-thesis testbed for **comparing service discovery protocols for embedded d
 Run everything from the repo root:
 
 ```bash
+./script/run_experiment.sh <zenoh|mqtt> <topology>   # build + launch + run, Ctrl-C cleans up
+
+# or step by step:
 ./script/build_cross_zenoh.sh            # build static musl Zenoh binaries (cross, --profile fast)
 ./script/build_ns3.sh <experiment>       # copy topology files into place, ./ns3 configure + build
 ./script/run_zenoh.sh                    # start containers + TAP/bridges (needs sudo + docker, runs in tmux)
