@@ -6,6 +6,7 @@ import subprocess
 import json
 import json5
 import time
+import traceback
 from datetime import datetime
 
 # Protocol to run in the containers: "zenoh" (default) or "mqtt". Set by script/run_experiment.sh.
@@ -18,11 +19,21 @@ def ep_ip(ep):
 def ep_subnet(ep):
     return ep_ip(ep).rsplit('.', 1)[0]     # "tcp/10.0.1.13:8003" -> "10.0.1"
 
+# Packet capture of all bridges (one pcapng per run), started in main
+capture = None
+pcap = None
+
+def stop_capture():
+    if capture:
+        subprocess.run("pkill -INT -x dumpcap", shell=True)  # SIGINT: dumpcap closes the file cleanly
+        capture.wait(timeout=10)
+
 def signal_handler(sig, frame):
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     print(f"\nReceived signal:{sig}, leaving...\n")
-    
+    stop_capture()  # before the cleanup deletes the bridges
+
     if node_list:
         # print("Cleaning up tmux sessions for all nodes...\n")
         # os.chdir("experiment_data")
@@ -121,7 +132,9 @@ class Node():
             
             if self.zid:
                 launch_cmd += f" -i {self.zid}"
-                
+        
+        # Ports to listen to
+        # Defaults are 
         for ep in self.listen_endpoints:
             launch_cmd += f" -l {ep}"
             
@@ -187,7 +200,9 @@ class Node():
         self.run_shell_command(f"sudo ip link set internal_{name}  up")       
         self.run_shell_command(f"sudo ip link set external_{name}  netns {pid}")       
 
-        self.run_shell_command(f"sudo ip netns exec {pid}  ip link set dev external_{name} name eth{tid}")       
+        self.run_shell_command(f"sudo ip netns exec {pid}  ip link set dev external_{name} name eth{tid}")
+        # Fixed MAC 02:00:00:00:<node>:<idx>; WiFi STAs in ns-3 use the same one (UseLocal)
+        self.run_shell_command(f"sudo ip netns exec {pid}  ip link set eth{tid} address 02:00:00:00:{int(self.id):02x}:{tid:02x}")
         self.run_shell_command(f"sudo ip netns exec {pid}  ip link set eth{tid} up")       
         self.run_shell_command(f"sudo ip netns exec {pid}  ip addr add {addr}/24 dev eth{tid}") 
         
@@ -273,11 +288,22 @@ if __name__ == "__main__":
         for node_id, node_config in nodes.items():
             node_list.append(Node(node_id, node_config))
 
+        # Capture all bridges (one per container interface) into one pcapng for this run
+        pcap = os.path.abspath(f"{base_dir}/{PROTOCOL}_{experiment_name}_{run_ts.replace(':', '-')}.pcapng")
+        # os.chmod(path=pcap, mode=stat.S_IRWXO)
+        bridges = sorted(l.split()[0] for l in subprocess.check_output("ip -br link", shell=True, text=True).splitlines()
+                         if l.startswith("br_"))
+        # No sudo: dumpcap has capture capabilities itself (user must be in the 'wireshark' group)
+        capture = subprocess.Popen(["dumpcap", "-q", "-w", pcap] + [a for br in bridges for a in ("-i", br)])
+        print(f"Capturing {len(bridges)} bridges to {pcap}\n")
+
         print("All nodes have been launched.\n")
 
         signal.pause()
     
     except Exception:
+        traceback.print_exc()  # show what failed before cleaning up
+        stop_capture()
         for node in node_list:
             print("ERROR: CLEANING UP")
             node.cleanup()
