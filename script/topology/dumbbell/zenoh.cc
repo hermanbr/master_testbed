@@ -8,13 +8,13 @@ using namespace ns3;
 /*
 DUMBBELL TOPOLOGY
 
- N0 (pub) \                                          / N5 (pub)
+ N0 (pub) \ WiFi                                     / N5 (pub)
            \     10.0.1.0/24          10.0.2.0/24   /
  N1 (sub) ---- N3 (router) <--------> N4 (router) ---- N6 (sub)
-           /            10.0.3.0/24 (bottleneck)    \
+           / WiFi                                   \
  N2 (sub) /                                          \ N7 (sub)
 
-Each side is one shared CSMA segment (like a switch/LAN), so leaves find
+Each side is connected to a WiFi AP (like a switch/LAN), so leaves find
 their router with Zenoh multicast scouting. Only the routers are linked in
 NETWORK_CONFIG.json5.
 
@@ -43,6 +43,8 @@ main(int argc, char* argv[])
 
     NodeContainer n;
     n.Create(8); // 0..7, ids match NETWORK_CONFIG.json5
+
+
 
     CsmaHelper lan;
     lan.SetChannelAttribute("DataRate", StringValue(lanRate));
