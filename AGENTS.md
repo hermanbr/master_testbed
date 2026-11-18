@@ -37,7 +37,7 @@ Run everything from the repo root:
 ./script/run_ns3.sh                      # ./ns3 run scratch/zenoh --no-build
 ```
 
-Order: build → start Zenoh nodes → run ns-3. Teardown: Ctrl-C in `launch_routers.py` cleans up containers, bridges, TAPs, and tmux sessions.
+Order: build → containers + TAP/bridges (no programs yet) → dumpcap → ns-3 → `launch_routers.py` waits until ns-3 has attached all TAPs → starts routers/brokers, waits `ROUTER_WAIT` s (default 10) → subscribers, waits `SUB_WAIT` s (default 5) → publishers. Both waits are env vars (e.g. `SUB_WAIT=10 ./script/run_experiment.sh ...`). Each start is logged as `<unix_ns>,<event>,<node>` in `events.csv` in the run folder (same clock as the pcap). Teardown: Ctrl-C in `launch_routers.py` cleans up containers, bridges, TAPs, and tmux sessions.
 
 `build_ns3.sh` configures ns-3 with `--enable-examples --enable-tests --enable-sudo`.
 
