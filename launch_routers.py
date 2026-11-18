@@ -6,6 +6,7 @@ import subprocess
 import json
 import json5
 import time
+import traceback
 from datetime import datetime
 
 # Protocol to run in the containers: "zenoh" (default) or "mqtt". Set by script/run_experiment.sh.
@@ -18,11 +19,40 @@ def ep_ip(ep):
 def ep_subnet(ep):
     return ep_ip(ep).rsplit('.', 1)[0]     # "tcp/10.0.1.13:8003" -> "10.0.1"
 
+# Phased start: after ns-3 is up, start routers, wait ROUTER_WAIT s, start subs, wait SUB_WAIT s, start pubs
+ROUTER_WAIT = float(os.environ.get("ROUTER_WAIT", 10))
+SUB_WAIT = float(os.environ.get("SUB_WAIT", 5))
+
+def event(name, node=""):
+    # Append "<unix_ns>,<event>,<node>" to events.csv in the run folder (same clock as the pcap)
+    with open(f"{base_dir}/events.csv", "a") as f:
+        f.write(f"{time.time_ns()},{name},{node}\n")
+
+def wait_for_ns3():
+    # A TAP has NO-CARRIER until a process opens it; ns-3's TapBridge opens all of them
+    print("Waiting for ns-3 to attach to all TAPs...\n")
+    ppid = os.getppid()
+    while any("NO-CARRIER" in l for l in subprocess.check_output("ip -o link", shell=True, text=True).splitlines()
+              if l.split(": ")[1].startswith("tap_")):
+        if os.getppid() != ppid:
+            raise RuntimeError("parent (run_experiment.sh) exited while waiting for ns-3")
+        time.sleep(0.2)
+
+# Packet capture of all bridges (one pcapng per run), started in main
+capture = None
+pcap = None
+
+def stop_capture():
+    if capture:
+        subprocess.run("pkill -INT -x dumpcap", shell=True)  # SIGINT: dumpcap closes the file cleanly
+        capture.wait(timeout=10)
+
 def signal_handler(sig, frame):
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     print(f"\nReceived signal:{sig}, leaving...\n")
-    
+    stop_capture()  # before the cleanup deletes the bridges
+
     if node_list:
         # print("Cleaning up tmux sessions for all nodes...\n")
         # os.chdir("experiment_data")
@@ -63,6 +93,10 @@ class Node():
             time.sleep(0.5)
         
         self.setup_network_interfaces()
+        # The program is started later by launch(), once ns-3 is up (see main)
+
+    def launch(self):
+        event("start", self.id)
         if PROTOCOL == "mqtt":
             self.launch_mqtt()
         else:
@@ -106,9 +140,15 @@ class Node():
 
     def launch_zenoh(self):
         launch_cmd = f"docker exec -e RUST_LOG=trace -it {self.container_name} ./zenoh/target/x86_64-unknown-linux-musl/fast/"
-        
-            
-        if self.role == "pub":
+
+        app = self.config.get("app")  # optional: own binary from apps/zenoh_apps instead of z_pub/z_sub
+        if app:
+            print(f"Launching {app} ({self.role}) {self.container_name}")
+            launch_cmd = (f"docker exec -e RUST_LOG=info -it {self.container_name} "
+                          f"/apps/zenoh_apps/target/x86_64-unknown-linux-musl/release/{app}")
+            if self.role == "sub":
+                launch_cmd += f" -o /out/{self.container_name}_video.ts"  # host: <run folder>/zenohd_<id>_video.ts
+        elif self.role == "pub":
             print(f"Launching publisher {self.container_name}")
             launch_cmd += "examples/z_pub"
         elif self.role == "sub":
@@ -121,10 +161,18 @@ class Node():
             
             if self.zid:
                 launch_cmd += f" -i {self.zid}"
-                
-        for ep in self.listen_endpoints:
-            launch_cmd += f" -l {ep}"
-            
+        
+        if self.role != "router" and self.config.get("mode") == "client":
+            # Client: no listening/scouting, connect only to the router on the same /24
+            net = ep_subnet(self.listen_endpoints[0])
+            router = next(ep for n in nodes.values() if n.get("role", "router") == "router"
+                          for ep in n["listen_endpoints"] if ep_subnet(ep) == net)
+            launch_cmd += f" -m client -e {router}"
+        else:
+            # Ports to listen to
+            for ep in self.listen_endpoints:
+                launch_cmd += f" -l {ep}"
+
 
         if self.role == "router":    
             peer_capacities = {} # 儲存 {Target ZID: Capacity}
@@ -187,7 +235,9 @@ class Node():
         self.run_shell_command(f"sudo ip link set internal_{name}  up")       
         self.run_shell_command(f"sudo ip link set external_{name}  netns {pid}")       
 
-        self.run_shell_command(f"sudo ip netns exec {pid}  ip link set dev external_{name} name eth{tid}")       
+        self.run_shell_command(f"sudo ip netns exec {pid}  ip link set dev external_{name} name eth{tid}")
+        # Fixed MAC 02:00:00:00:<node>:<idx>; WiFi STAs in ns-3 use the same one (UseLocal)
+        self.run_shell_command(f"sudo ip netns exec {pid}  ip link set eth{tid} address 02:00:00:00:{int(self.id):02x}:{tid:02x}")
         self.run_shell_command(f"sudo ip netns exec {pid}  ip link set eth{tid} up")       
         self.run_shell_command(f"sudo ip netns exec {pid}  ip addr add {addr}/24 dev eth{tid}") 
         
@@ -233,6 +283,9 @@ class Node():
                 container_project_dir = os.path.abspath(os.path.join(os.getcwd(), '..'))
                 host_path = host_path.replace(container_project_dir, host_project_dir, 1)
             volume_arg = f"-v {host_path}:/zenoh"
+        volume_arg += f" -v {os.path.abspath('apps')}:/apps"  # own apps (apps/zenoh_apps)
+        # run folder as /out for app output files (--mount: the ':' in the timestamp breaks -v)
+        volume_arg += f" --mount type=bind,src={os.path.abspath(base_dir)},dst=/out"
 
         docker_run_cmd = f"docker run -dit --name {self.container_name} --network none --rm --entrypoint /bin/sh {volume_arg} {image}"
         if image_clean:
@@ -273,11 +326,34 @@ if __name__ == "__main__":
         for node_id, node_config in nodes.items():
             node_list.append(Node(node_id, node_config))
 
+        # Capture all bridges (one per container interface) into one pcapng for this run
+        pcap = os.path.abspath(f"{base_dir}/{PROTOCOL}_{experiment_name}_{run_ts.replace(':', '-')}.pcapng")
+        # os.chmod(path=pcap, mode=stat.S_IRWXO)
+        bridges = sorted(l.split()[0] for l in subprocess.check_output("ip -br link", shell=True, text=True).splitlines()
+                         if l.startswith("br_"))
+        # No sudo: dumpcap has capture capabilities itself (user must be in the 'wireshark' group)
+        capture = subprocess.Popen(["dumpcap", "-q", "-w", pcap] + [a for br in bridges for a in ("-i", br)])
+        print(f"Capturing {len(bridges)} bridges to {pcap}\n")
+        event("capture_start")
+
+        wait_for_ns3()
+        event("ns3_up")
+        print("ns-3 is up.\n")
+
+        for role, wait in (("router", ROUTER_WAIT), ("sub", SUB_WAIT), ("pub", 0)):
+            print(f"Starting {role} nodes, then waiting {wait:g} s\n")
+            for node in node_list:
+                if node.role == role:
+                    node.launch()
+            time.sleep(wait)
+
         print("All nodes have been launched.\n")
 
         signal.pause()
     
     except Exception:
+        traceback.print_exc()  # show what failed before cleaning up
+        stop_capture()
         for node in node_list:
             print("ERROR: CLEANING UP")
             node.cleanup()

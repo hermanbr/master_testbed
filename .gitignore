@@ -19,3 +19,6 @@ experiment_data/*
 # OS metadata files
 .DS_Store
 Thumbs.db
+
+# Rust apps build output
+apps/zenoh_apps/target/
