@@ -1,74 +1,168 @@
+/*
+ * SPDX-License-Identifier: GPL-2.0-only
+ */
+
+//
+// This is an illustration of how one could use virtualization techniques to
+// allow running applications on virtual machines talking over simulated
+// networks.
+//
+// The actual steps required to configure the virtual machines can be rather
+// involved, so we don't go into that here.  Please have a look at one of
+// our HOWTOs on the nsnam wiki for more details about how to get the
+// system configured.  For an example, have a look at "HOWTO Use Linux
+// Containers to set up virtual networks" which uses this code as an
+// example.
+//
+// The configuration you are after is explained in great detail in the
+// HOWTO, but looks like the following:
+//
+//  +----------+                           +----------+
+//  | virtual  |                           | virtual  |
+//  |  Linux   |                           |  Linux   |
+//  |   Host   |                           |   Host   |
+//  |          |                           |          |
+//  |   eth0   |                           |   eth0   |
+//  +----------+                           +----------+
+//       |                                      |
+//  +----------+                           +----------+
+//  |  Linux   |                           |  Linux   |
+//  |  Bridge  |                           |  Bridge  |
+//  +----------+                           +----------+
+//       |                                      |
+//  +------------+                       +-------------+
+//  | "tap-left" |                       | "tap-right" |
+//  +------------+                       +-------------+
+//       |           n0            n1           |
+//       |       +--------+    +--------+       |
+//       +-------|  tap   |    |  tap   |-------+
+//               | bridge |    | bridge |
+//               +--------+    +--------+
+//               |  wifi  |    |  wifi  |
+//               +--------+    +--------+
+//                   |             |
+//                 ((*))         ((*))
+//
+//                       Wifi LAN
+//
+//                        ((*))
+//                          |
+//                     +--------+
+//                     |  wifi  |
+//                     +--------+
+//                     | access |
+//                     |  point |
+//                     +--------+
+//
 #include "ns3/core-module.h"
-#include "ns3/csma-module.h"
+#include "ns3/mobility-module.h"
 #include "ns3/network-module.h"
 #include "ns3/tap-bridge-module.h"
+#include "ns3/wifi-module.h"
+
+#include <fstream>
+#include <iostream>
 
 using namespace ns3;
 
-/*
-DUMBBELL TOPOLOGY
-
- N0 (pub) \ WiFi                                 
-           \     10.0.1.0/24
- N1 (sub) ---- N3 (router) 
-           / WiFi                                   
- N2 (sub) /                                          
-
-Each side is connected to a WiFi AP (like a switch/LAN), so leaves find
-their router with Zenoh multicast scouting. Only the routers are linked in
-NETWORK_CONFIG.json5.
-
-TAP names: tap_<node>_<endpoint index>, must match NETWORK_CONFIG.json5.
-*/
-
-NS_LOG_COMPONENT_DEFINE("ZenohDumbbell");
+NS_LOG_COMPONENT_DEFINE("TapWifiVirtualMachineExample");
 
 int
 main(int argc, char* argv[])
 {
-    std::string lanRate = "100Mbps";
-    std::string bottleneckRate = "10Mbps";
-    uint32_t delayMs = 1;
-    double simTime = 600.0;
-
     CommandLine cmd(__FILE__);
-    cmd.AddValue("lanRate", "Data rate of the two edge LANs", lanRate);
-    cmd.AddValue("bottleneckRate", "Data rate of the router-router link", bottleneckRate);
-    cmd.AddValue("delayMs", "One-way delay of every link (ms)", delayMs);
-    cmd.AddValue("simTime", "Simulation time (s)", simTime);
     cmd.Parse(argc, argv);
 
+    //
+    // We are interacting with the outside, real, world.  This means we have to
+    // interact in real-time and therefore means we have to use the real-time
+    // simulator and take the time to calculate checksums.
+    //
     GlobalValue::Bind("SimulatorImplementationType", StringValue("ns3::RealtimeSimulatorImpl"));
     GlobalValue::Bind("ChecksumEnabled", BooleanValue(true));
 
-    NodeContainer n;
-    n.Create(4); // 0..3, ids match NETWORK_CONFIG.json5
+    //
+    // Create three ghost nodes.  The two first will represent the clients, while the third will represent the router
+    //
+    NodeContainer nodes;
+    nodes.Create(5);
 
-    CsmaHelper lan;
-    lan.SetChannelAttribute("DataRate", StringValue(lanRate));
-    lan.SetChannelAttribute("Delay", TimeValue(MilliSeconds(delayMs)));
+    //
+    // We're going to use 802.11 A so set up a wifi helper to reflect that.
+    //
+    WifiHelper wifi;
+    wifi.SetStandard(WIFI_STANDARD_80211a);
+    wifi.SetRemoteStationManager("ns3::ConstantRateWifiManager",
+                                 "DataMode",
+                                 StringValue("OfdmRate54Mbps"));
 
-    // 10.0.1.0/24: left LAN (N0, N1, N2, N3)
-    NetDeviceContainer left = lan.Install(NodeContainer(n.Get(0), n.Get(1), n.Get(2), n.Get(3)));
+    //
+    // No reason for pesky access points, so we'll use an ad-hoc network.
+    //
+    WifiMacHelper wifiMac;
+    wifiMac.SetType("ns3::AdhocWifiMac");
 
-    TapBridgeHelper tb;
-    tb.SetAttribute("Mode", StringValue("UseBridge"));
+    //
+    // Configure the physical layer.
+    //
+    YansWifiChannelHelper wifiChannel = YansWifiChannelHelper::Default();
+    YansWifiPhyHelper wifiPhy;
+    wifiPhy.SetChannel(wifiChannel.Create());
 
-    // Left leaves
-    tb.SetAttribute("DeviceName", StringValue("tap_0_0")); 
-    tb.Install(n.Get(0), left.Get(0));
-    tb.SetAttribute("DeviceName", StringValue("tap_1_0")); 
-    tb.Install(n.Get(1), left.Get(1));
-    tb.SetAttribute("DeviceName", StringValue("tap_2_0")); 
-    tb.Install(n.Get(2), left.Get(2));
+    //
+    // Install the wireless devices onto our ghost nodes.
+    //
+    NetDeviceContainer devices = wifi.Install(wifiPhy, wifiMac, nodes);
 
-    // Router N3: endpoint 0 = left LAN, endpoint 1 = bottleneck
-    tb.SetAttribute("DeviceName", StringValue("tap_3_0")); 
-    tb.Install(n.Get(3), left.Get(3));
+    //
+    // We need location information since we are talking about wifi, so add a
+    // constant position to the ghost nodes.
+    //
+    MobilityHelper mobility;
+    Ptr<ListPositionAllocator> positionAlloc = CreateObject<ListPositionAllocator>();
+    positionAlloc->Add(Vector(0.0, 0.0, 0.0));
+    positionAlloc->Add(Vector(5.0, 0.0, 0.0));
+    positionAlloc->Add(Vector(2.5, 5.0, 0.0));
+    positionAlloc->Add(Vector(2.5, 5.0, 0.0));
+    positionAlloc->Add(Vector(2.5, 5.0, 0.0));
+    mobility.SetPositionAllocator(positionAlloc);
+    mobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");
+    mobility.Install(nodes);
+
+    //
+    // Use the TapBridgeHelper to connect to the pre-configured tap devices for
+    // the left side.  We go with "UseLocal" mode since the wifi devices do not
+    // support promiscuous mode (because of their natures0.  This is a special
+    // case mode that allows us to extend a linux bridge into ns-3 IFF we will
+    // only see traffic from one other device on that bridge.  That is the case
+    // for this configuration.
+    //
+    TapBridgeHelper tapBridge;
+    tapBridge.SetAttribute("Mode", StringValue("UseLocal"));
+    tapBridge.SetAttribute("DeviceName", StringValue("tap_0_0"));
+    tapBridge.Install(nodes.Get(0), devices.Get(0));
+
+    tapBridge.SetAttribute("DeviceName", StringValue("tap_1_0"));
+    tapBridge.Install(nodes.Get(1), devices.Get(1));
+
+    tapBridge.SetAttribute("DeviceName", StringValue("tap_2_0"));
+    tapBridge.Install(nodes.Get(2), devices.Get(2));
+
+    //
+    // Connect the router tap tp the third wifi device ghost node
+    //
+    tapBridge.SetAttribute("DeviceName", StringValue("tap_3_0"));
+    tapBridge.Install(nodes.Get(3), devices.Get(3));
 
 
-    Simulator::Stop(Seconds(simTime));
+     tapBridge.SetAttribute("DeviceName", StringValue("tap_4_0"));
+    tapBridge.Install(nodes.Get(4), devices.Get(4));
+    //
+    // Run the simulation for ten minutes to give the user time to play around
+    //
+    Simulator::Stop(Seconds(600.));
     Simulator::Run();
     Simulator::Destroy();
+
     return 0;
 }

@@ -82,3 +82,4 @@ pyenv
 Vagrantfile
 
 .claude/**
+.vscode
