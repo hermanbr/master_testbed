@@ -139,7 +139,7 @@ class Node():
         self.run_shell_command(f"tmux send-keys -t {self.container_name} '{launch_cmd}' C-m")
 
     def launch_zenoh(self):
-        launch_cmd = f"docker exec -e RUST_LOG=trace -it {self.container_name} ./zenoh/target/x86_64-unknown-linux-musl/fast/"
+        launch_cmd = f"docker exec -e RUST_LOG=debug -it {self.container_name} ./zenoh/target/x86_64-unknown-linux-musl/fast/"
 
         app = self.config.get("app")  # optional: own binary from apps/zenoh_apps instead of z_pub/z_sub
         if app:
@@ -216,12 +216,18 @@ class Node():
     def setup_netns_veth(self, tid, addr):
         name = f"{self.id}_{tid}"
         
-        self.run_shell_command(f"sudo ip tuntap add tap_{name} mode tap")
+        TAP_NAME = f'tap_{name}'
+        MAC_ADDRESS = f'02:00:00:00:{int(self.id):02x}:{tid:02x}'
+
+        self.run_shell_command(f"sudo ip tuntap add {TAP_NAME} mode tap")
+        # No IPv6 on the TAP itself: its own MLD/RS frames bypass the bridge (and ebtables), and
+        # TapBridge UseLocal would learn the TAP's MAC instead of the container's
+        self.run_shell_command(f"sudo sysctl -qw net.ipv6.conf.{TAP_NAME}.disable_ipv6=1")
         self.run_shell_command(f"sudo ip link set tap_{name} promisc on up")
         
         self.run_shell_command(f"sudo ip link add name br_{name} type bridge")
         self.run_shell_command(f"sudo ip link set br_{name} up")       
-        self.run_shell_command(f"sudo ip link set tap_{name} master br_{name}")
+        self.run_shell_command(f"sudo ip link set {TAP_NAME} master br_{name}")
         
         self.run_shell_command(f"sudo iptables -I FORWARD -m physdev --physdev-is-bridged -i br_{name}  -j ACCEPT")
 
@@ -237,10 +243,22 @@ class Node():
 
         self.run_shell_command(f"sudo ip netns exec {pid}  ip link set dev external_{name} name eth{tid}")
         # Fixed MAC 02:00:00:00:<node>:<idx>; WiFi STAs in ns-3 use the same one (UseLocal)
-        self.run_shell_command(f"sudo ip netns exec {pid}  ip link set eth{tid} address 02:00:00:00:{int(self.id):02x}:{tid:02x}")
+        self.run_shell_command(f"sudo ip netns exec {pid}  ip link set eth{tid} address {MAC_ADDRESS}")
         self.run_shell_command(f"sudo ip netns exec {pid}  ip link set eth{tid} up")       
         self.run_shell_command(f"sudo ip netns exec {pid}  ip addr add {addr}/24 dev eth{tid}") 
+
+        # Only allow the nodes own mac address to even enter the TAP bridge, otherwise it messes with NS-3's tap bridge
+        EBTABLES_RULE_NAME = f"EBTABLES_{TAP_NAME}"
+
+        self.run_shell_command(f"sudo ebtables -N {EBTABLES_RULE_NAME}")
+        self.run_shell_command(f"sudo ebtables -A {EBTABLES_RULE_NAME} -s {MAC_ADDRESS} -j ACCEPT")
+        # Explicit DROP: "-N ... -P DROP" leaves the chain policy at RETURN, so nothing would be dropped
+        self.run_shell_command(f"sudo ebtables -A {EBTABLES_RULE_NAME} -j DROP")
         
+        # Set the rules on the TAP
+        self.run_shell_command(f"sudo ebtables -A FORWARD -o {TAP_NAME} -j {EBTABLES_RULE_NAME}")
+        self.run_shell_command(f"sudo ebtables -A OUTPUT -o {TAP_NAME} -j DROP")
+
     def setup_network_interfaces(self):
         for idx, ep in enumerate(self.listen_endpoints):
             addr = ep.split('/')[1].split(':')[0]  # e.g. 10.0.1.1
@@ -255,12 +273,22 @@ class Node():
         name = f"{self.id}_{tid}"
         
         self.run_shell_command(f"sudo iptables -D FORWARD -m physdev --physdev-is-bridged -i br_{name} -j ACCEPT 2>/dev/null || true")
+
+        # ebtables rules from setup_netns_veth (loop: earlier runs may have left duplicates)
+        tap = f"tap_{name}"
+        self.run_shell_command(f"while sudo ebtables -D FORWARD -o {tap} -j EBTABLES_{tap} 2>/dev/null; do :; done")
+        self.run_shell_command(f"while sudo ebtables -D OUTPUT -o {tap} -j DROP 2>/dev/null; do :; done")
+        self.run_shell_command(f"sudo ebtables -F EBTABLES_{tap} 2>/dev/null && sudo ebtables -X EBTABLES_{tap} || true")
         
         self.run_shell_command(f"sudo ip link del br_{name} 2>/dev/null || true")
         self.run_shell_command(f"sudo ip link del tap_{name} 2>/dev/null || true")
         self.run_shell_command(f"sudo ip link del internal_{name} 2>/dev/null || true")
         self.run_shell_command(f"sudo ip link del external_{name} 2>/dev/null || true")
-        
+
+    def cleanup_stop_container(self):
+        print(f"Stopping container for Node {self.id}...\n")
+        self.run_shell_command(f"docker container rm -f {self.container_name} 2>/dev/null || true")
+    
     def cleanup(self):
         print(f"Cleaning up for Node {self.id}...\n")
         

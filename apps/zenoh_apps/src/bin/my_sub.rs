@@ -19,7 +19,7 @@ async fn main() {
     println!("{} session opened, zid {}", common::now_ns(), session.zid());
     println!("{} writing {KEY} to {out_path}", common::now_ns());
 
-    let subscriber = session.declare_subscriber(KEY).await.unwrap();
+    let subscriber = session.declare_subscriber(format!("{KEY}/*")).await.unwrap(); // all publishers
 
     while let Ok(sample) = subscriber.recv_async().await {
         let received = common::now_ns();
@@ -32,6 +32,6 @@ async fn main() {
         let mut it = att.split_whitespace();
         let (seq, sent) = (it.next().unwrap_or("?"), it.next().unwrap_or("0"));
         let latency_ms = (received as f64 - sent.parse::<f64>().unwrap_or(0.0)) / 1e6;
-        println!("{received} recv {seq} {sent} {latency_ms:.3} {}", data.len());
+        println!("{received} recv {seq} {sent} {latency_ms:.3} {} {}", data.len(), &sample.key_expr().as_str()[sample.key_expr().as_str().len() - 3..]); // last 3 chars of publisher zid
     }
 }
