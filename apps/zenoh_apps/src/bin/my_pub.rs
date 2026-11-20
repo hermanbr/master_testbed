@@ -22,7 +22,7 @@ async fn main() {
     println!("{} session opened, zid {}", common::now_ns(), session.zid());
     println!("{} streaming {file} ({} bytes) at {bitrate} bit/s on {KEY}", common::now_ns(), video.len());
 
-    let publisher = session.declare_publisher(KEY).await.unwrap();
+    let publisher = session.declare_publisher(format!("{KEY}/{}", session.zid())).await.unwrap(); // own sub-key per publisher (zid is random)
 
     let mut seq = 0u64;
     loop {
