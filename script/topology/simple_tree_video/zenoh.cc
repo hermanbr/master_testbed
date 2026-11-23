@@ -115,6 +115,21 @@ main(int argc, char* argv[])
     NetDeviceContainer devices = wifi.Install(wifiPhy, wifiMac, nodes);
 
     //
+    // Give each WiFi device its container's MAC (02:00:00:00:<node>:00, set by launch_routers.py).
+    // TapBridge UseLocal later calls SetAddress with the learned MAC, but WifiMac::SetAddress doesn't
+    // update the frame exchange manager (-> NS_ASSERT linkId.has_value()). Setting both here means
+    // that later call doesn't change anything.
+    //
+    for (uint32_t i = 0; i < devices.GetN(); ++i)
+    {
+        char mac[18];
+        std::snprintf(mac, sizeof(mac), "02:00:00:00:%02x:00", i);
+        auto dev = DynamicCast<WifiNetDevice>(devices.Get(i));
+        dev->SetAddress(Mac48Address(mac));
+        dev->GetMac()->GetFrameExchangeManager()->SetAddress(Mac48Address(mac));
+    }
+
+    //
     // We need location information since we are talking about wifi, so add a
     // constant position to the ghost nodes.
     //

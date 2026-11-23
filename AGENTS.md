@@ -19,7 +19,7 @@ Master-thesis testbed for **comparing service discovery protocols for embedded d
 | `script/topology/<experiment>/` | One directory per experiment: `zenoh.cc` (ns-3 topology) + `NETWORK_CONFIG.json5` (container nodes/links). Existing: `dumbbell` (CSMA), `dumbbell_wifi` (802.11ax leaves), `test`. |
 | `ns-3-dev/` | Git submodule, **upstream** ns-3 (gitlab.com/nsnam). Has its own `AGENTS.md`. |
 | `zenoh/` | Git submodule, **upstream** Eclipse Zenoh (Rust). |
-| `zenohd-auto-deploy/` | Git submodule, separate repo (`hermanbr/zenohd-auto-deploy`). `launch_routers.py` creates containers, TAPs, bridges, veths, tmux sessions. |
+| `zenohd-auto-deploy/` | Git submodule, separate repo (`hermanbr/zenohd-auto-deploy`). `launch_routers.py` creates containers, TAPs, bridges, veths, tmux sessions. Own video apps `my_pub`/`my_sub` (node field `app`) live in `apps/zenoh_apps` and `apps/mqtt_apps` (same names, same log format; picked by PROTOCOL). Not built by `run_experiment.sh`: `cd apps/<x>_apps && cross build --release --target x86_64-unknown-linux-musl`. |
 | `container/` | `Dockerfile` + `docker-compose.yml` for the build/sim environment (Ubuntu 24.04, gcc-12, Rust + `cross`, privileged, host network, docker socket mounted). |
 | `install_host.sh` | Installs the same toolchain directly on the host (Rust into `/data/rust`). |
 
