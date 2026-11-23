@@ -110,7 +110,13 @@ class Node():
             net = ep_subnet(self.listen_endpoints[0])
             broker = next(ep_ip(ep) for n in nodes.values() if n.get("role", "router") == "router"
                           for ep in n["listen_endpoints"] if ep_subnet(ep) == net)
-            if self.role == "pub":
+            app = self.config.get("app")  # optional: own binary from apps/mqtt_apps (same names as apps/zenoh_apps)
+            if app:
+                print(f"Launching {app} ({self.role}) {self.container_name} -> {broker}")
+                launch_cmd += f"/apps/mqtt_apps/target/x86_64-unknown-linux-musl/release/{app} -h {broker}"
+                if self.role == "sub":
+                    launch_cmd += f" -o /out/{self.container_name}_video.ts"  # host: <run folder>/zenohd_<id>_video.ts
+            elif self.role == "pub":
                 print(f"Launching MQTT publisher {self.container_name} -> {broker}")
                 launch_cmd += (f'mosquitto_pub -d -h {broker} -t demo/example/mqtt-pub -m "Pub from MQTT {self.id}"'
                                f' --repeat 1000000 --repeat-delay 1')

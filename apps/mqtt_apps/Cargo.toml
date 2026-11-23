@@ -1,0 +1,13 @@
+[package]
+name = "mqtt_apps"
+version = "0.1.0"
+edition = "2021"
+
+# MQTT counterparts of apps/zenoh_apps (same video, chunking, pacing and log format)
+[dependencies]
+rumqttc = { version = "=0.25.1", default-features = false }   # MQTT 5 client (rumqttc::v5), no TLS
+tokio = { version = "1", features = ["full"] }
+
+# Binaries: src/bin/my_pub.rs, src/bin/my_sub.rs
+# Build (static, runs in any container):
+#   cross build --release --target x86_64-unknown-linux-musl
