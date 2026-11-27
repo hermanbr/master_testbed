@@ -46,6 +46,7 @@ See `NETWORK_CONFIG_DEFAULT.json5` for the template with documentation. Key fiel
 | `volume` | Path to Zenoh binaries, mounted into the container |
 | `nodes.<id>.role` | `"pub"`, `"sub"`, or omit for router |
 | `nodes.<id>.zid` | Zenoh runtime identifier (128-bit hex) |
+| `nodes.<id>.timeline` | Optional, e.g. `[{at: 15, do: "start"}, {at: 40, do: "stop"}]`; `at` = s after ns-3 is up. Actions (`scheduler.py`): `start`, `stop` (kill the program, container + network stay), `pause`/`resume` (`docker pause`, node goes silent). Default: start at 0 |
 | `nodes.<id>.listen_endpoints` | List of `"tcp/<ip>:<port>"` endpoints |
 | `links` | Connections between nodes (`a`, `a_idx`, `b`, `b_idx`, optional `cap` in Mbps) |
 

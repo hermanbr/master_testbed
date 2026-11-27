@@ -16,6 +16,8 @@ pub fn arg(flag: &str, default: &str) -> String {
 /// `-m <mode>`. Everything else stays at Zenoh defaults (peer mode, multicast scouting).
 pub fn config_from_args() -> zenoh::Config {
     let mut config = zenoh::Config::default();
+    // Retry connecting forever (client default is 0 = one try, then exit): nodes may start before the router
+    config.insert_json5("connect/timeout_ms", "-1").unwrap();
     if let Some(mode) = args("-m").pop() {
         config.insert_json5("mode", &serde_json::to_string(&mode).unwrap()).unwrap();
     }
