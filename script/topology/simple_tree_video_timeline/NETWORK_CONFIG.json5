@@ -1,0 +1,61 @@
+{
+    // Copy of simple_tree_video with a timeline on pub 0 (tests scheduler.py).
+    // Dumbbell: N0-N2 on left LAN -> router N3 <-> router N4 -> N5-N7 on right LAN.
+    // IP last octet = 10 + node id. Must match zenoh.cc.
+    experiment: "simple_tree_video_timeline",
+
+    docker_image: {
+        tag: "eclipse/zenoh:1.4.0",
+        clean_first: false
+    },
+
+    volume: "../zenoh",
+
+    nodes: {
+        // ---- Left side, 10.0.1.0/24 ----
+        "0": {
+            role: "pub", app: "my_pub",
+            mode: "client",
+            zid: {set: true, value: "aa4320990a90d745a86034516feef351"},
+            // start, stop (program killed), start again, freeze, unfreeze
+            timeline: [
+                {at: 5, do: "start"},
+                {at: 15, do: "stop"},
+                {at: 25, do: "start"},
+                {at: 40, do: "pause"},
+                {at: 55, do: "resume"},
+            ],
+            listen_endpoints: ["tcp/10.0.1.10:7447"],
+        },
+        "1": {
+            role: "sub", app: "my_sub",
+            mode: "client",
+            zid: {set: true, value: "aa4320990a90d745a86034516feef352"},
+            listen_endpoints: ["tcp/10.0.1.11:7447"],
+        },
+        "2": {
+            role: "sub", app: "my_sub",
+            mode: "client",
+            zid: {set: true, value: "aa4320990a90d745a860345a6feef352"},
+            listen_endpoints: ["tcp/10.0.1.12:7447"],
+        },
+         "3": {
+            role: "pub", app: "my_pub",
+            mode: "client",
+            zid: {set: true, value: "aa4320990a90d745a820345a6feef352"},
+            listen_endpoints: ["tcp/10.0.1.13:7447"],
+            timeline : [
+                {at: 0, do: "stop"}
+            ],
+        },
+
+        // ---- Routers ---- // Default value
+        "4": {
+            zid: {set: true, value: "c16a6fbfd2e362029d2ff8012bbe3ac1"},
+            listen_endpoints: [
+                "tcp/10.0.1.14:7447", // 0: left LAN
+            ],
+        },
+
+    },
+}
