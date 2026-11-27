@@ -7,6 +7,7 @@ import json
 import json5
 import time
 import traceback
+import scheduler
 from datetime import datetime
 
 # Protocol to run in the containers: "zenoh" (default) or "mqtt". Set by script/run_experiment.sh.
@@ -18,10 +19,6 @@ def ep_ip(ep):
 
 def ep_subnet(ep):
     return ep_ip(ep).rsplit('.', 1)[0]     # "tcp/10.0.1.13:8003" -> "10.0.1"
-
-# Phased start: after ns-3 is up, start routers, wait ROUTER_WAIT s, start subs, wait SUB_WAIT s, start pubs
-ROUTER_WAIT = float(os.environ.get("ROUTER_WAIT", 10))
-SUB_WAIT = float(os.environ.get("SUB_WAIT", 5))
 
 def event(name, node=""):
     # Append "<unix_ns>,<event>,<node>" to events.csv in the run folder (same clock as the pcap)
@@ -95,12 +92,25 @@ class Node():
         self.setup_network_interfaces()
         # The program is started later by launch(), once ns-3 is up (see main)
 
-    def launch(self):
-        event("start", self.id)
+    # Timeline actions (scheduler.py calls these by name)
+    def start(self):
         if PROTOCOL == "mqtt":
             self.launch_mqtt()
         else:
             self.launch_zenoh()
+
+    def stop(self):
+        # SIGINT to every process in the container except PID 1 (sh): the program exits, TCP closes cleanly
+        self.run_shell_command(f"docker exec {self.container_name} kill -INT -1 || true")
+        # Fresh shell in the tmux pane: ends the host-side docker exec (and MQTT's until-retry loop)
+        # -c: the new shell starts in the run folder, so a later start() logs there (./zenohd_<id>.log)
+        self.run_shell_command(f"tmux respawn-pane -k -c {os.path.abspath(base_dir)} -t {self.container_name}")
+
+    def pause(self):  # freeze: the node goes silent, peers only notice at lease/keepalive timeout
+        self.run_shell_command(f"docker pause {self.container_name}")
+
+    def resume(self):
+        self.run_shell_command(f"docker unpause {self.container_name}")
 
     def launch_mqtt(self):
         launch_cmd = f"docker exec -it {self.container_name} "
@@ -141,7 +151,7 @@ class Node():
             print(f"Launching MQTT broker {self.container_name}")
             launch_cmd += "mosquitto -c /mosquitto.conf -v"
 
-        launch_cmd += f" > >(tee ./{self.container_name}.log) 2> >(tee ./{self.container_name}_err.log >&2)"
+        launch_cmd += f" > >(tee -a ./{self.container_name}.log) 2> >(tee -a ./{self.container_name}_err.log >&2)"
         self.run_shell_command(f"tmux send-keys -t {self.container_name} '{launch_cmd}' C-m")
 
     def launch_zenoh(self):
@@ -213,7 +223,7 @@ class Node():
             for ep in peer_eps:
                 launch_cmd += f" -e {ep}"
                 
-        launch_cmd += f" > >(tee ./{self.container_name}.log) 2> >(tee ./{self.container_name}_err.log >&2)"
+        launch_cmd += f" > >(tee -a ./{self.container_name}.log) 2> >(tee -a ./{self.container_name}_err.log >&2)"
         tmux_cmd = f"tmux send-keys -t {self.container_name} '{launch_cmd}' C-m"
         
         self.run_shell_command(tmux_cmd)
@@ -350,6 +360,7 @@ if __name__ == "__main__":
         user_name = network_config.get('user_name')
         nodes = network_config.get('nodes', {})
         links = network_config.get('links', [])
+        timeline = scheduler.create_timeline(nodes)  # before creating anything: a bad timeline exits here
 
         run_ts = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
         base_dir = f"experiment_data/{PROTOCOL}/{experiment_name}/{run_ts}"
@@ -374,14 +385,9 @@ if __name__ == "__main__":
         event("ns3_up")
         print("ns-3 is up.\n")
 
-        for role, wait in (("router", ROUTER_WAIT), ("sub", SUB_WAIT), ("pub", 0)):
-            print(f"Starting {role} nodes, then waiting {wait:g} s\n")
-            for node in node_list:
-                if node.role == role:
-                    node.launch()
-            time.sleep(wait)
+        scheduler.run_scheduler(timeline, {node.id: node for node in node_list}, event)
 
-        print("All nodes have been launched.\n")
+        print("Timeline done, nodes keep running until Ctrl-C.\n")
 
         signal.pause()
     
