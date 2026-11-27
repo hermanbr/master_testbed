@@ -1,7 +1,7 @@
 {
     // Copy of simple_tree_video with a timeline on pub 0 (tests scheduler.py).
     // Dumbbell: N0-N2 on left LAN -> router N3 <-> router N4 -> N5-N7 on right LAN.
-    // IP last octet = 10 + node id. Must match zenoh.cc.
+    // IP last octet = 10 + node id. Must match ns3-topology.cc.
     experiment: "simple_tree_video_timeline",
 
     docker_image: {

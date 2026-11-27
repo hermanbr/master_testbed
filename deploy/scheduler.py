@@ -3,7 +3,7 @@
     "0": { ..., timeline: [ {at: 15, do: "start"}, {at: 40, do: "stop"} ] }
 
 `at` = seconds after ns-3 is up. A node without a timeline starts at 0.
-Actions are methods on launch_routers.Node with the same name.
+Actions are methods on launch_nodes.Node with the same name.
 """
 import sys
 import time

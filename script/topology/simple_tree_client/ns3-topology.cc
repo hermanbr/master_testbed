@@ -21,7 +21,7 @@ NETWORK_CONFIG.json5.
 TAP names: tap_<node>_<endpoint index>, must match NETWORK_CONFIG.json5.
 */
 
-NS_LOG_COMPONENT_DEFINE("ZenohDumbbell");
+NS_LOG_COMPONENT_DEFINE("Dumbbell");
 
 int
 main(int argc, char* argv[])

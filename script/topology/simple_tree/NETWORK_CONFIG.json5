@@ -1,6 +1,6 @@
 {
     // Dumbbell: N0-N2 on left LAN -> router N3 <-> router N4 -> N5-N7 on right LAN.
-    // IP last octet = 10 + node id. Must match zenoh.cc.
+    // IP last octet = 10 + node id. Must match ns3-topology.cc.
     experiment: "simple_tree",
 
     docker_image: {

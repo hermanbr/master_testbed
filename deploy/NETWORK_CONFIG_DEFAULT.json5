@@ -14,7 +14,7 @@
     // volume: "<host_zenohd_path>",
 
     routers: {
-        /// Router identifiers (e.g., "1", "2", "3"). Corresponding logs will be zenohd_1.log, zenohd_2.log, ...
+        /// Router identifiers (e.g., "1", "2", "3"). Corresponding logs will be node_1.log, node_2.log, ...
         "1": {
             /// (Optional) Path to the host zenohd binary, mounted into the container at /zenohd.
             /// Overrides the global volume setting if present.

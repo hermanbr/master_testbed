@@ -77,7 +77,7 @@ class Node():
             self.zid = False
             
         self.listen_endpoints = config.get('listen_endpoints') 
-        self.container_name = f"zenohd_{self.id}"
+        self.container_name = f"node_{self.id}"
         self.volume = self.config.get('volume') or network_config.get('volume')
         self.role = self.config.get('role', 'router') 
         
@@ -103,7 +103,7 @@ class Node():
         # SIGINT to every process in the container except PID 1 (sh): the program exits, TCP closes cleanly
         self.run_shell_command(f"docker exec {self.container_name} kill -INT -1 || true")
         # Fresh shell in the tmux pane: ends the host-side docker exec (and MQTT's until-retry loop)
-        # -c: the new shell starts in the run folder, so a later start() logs there (./zenohd_<id>.log)
+        # -c: the new shell starts in the run folder, so a later start() logs there (./node_<id>.log)
         self.run_shell_command(f"tmux respawn-pane -k -c {os.path.abspath(base_dir)} -t {self.container_name}")
 
     def pause(self):  # freeze: the node goes silent, peers only notice at lease/keepalive timeout
@@ -125,7 +125,7 @@ class Node():
                 print(f"Launching {app} ({self.role}) {self.container_name} -> {broker}")
                 launch_cmd += f"/apps/mqtt_apps/target/x86_64-unknown-linux-musl/release/{app} -h {broker}"
                 if self.role == "sub":
-                    launch_cmd += f" -o /out/{self.container_name}_video.ts"  # host: <run folder>/zenohd_<id>_video.ts
+                    launch_cmd += f" -o /out/{self.container_name}_video.ts"  # host: <run folder>/node_<id>_video.ts
             elif self.role == "pub":
                 print(f"Launching MQTT publisher {self.container_name} -> {broker}")
                 launch_cmd += (f'mosquitto_pub -d -h {broker} -t demo/example/mqtt-pub -m "Pub from MQTT {self.id}"'
@@ -163,7 +163,7 @@ class Node():
             launch_cmd = (f"docker exec -e RUST_LOG=info -it {self.container_name} "
                           f"/apps/zenoh_apps/target/x86_64-unknown-linux-musl/release/{app}")
             if self.role == "sub":
-                launch_cmd += f" -o /out/{self.container_name}_video.ts"  # host: <run folder>/zenohd_<id>_video.ts
+                launch_cmd += f" -o /out/{self.container_name}_video.ts"  # host: <run folder>/node_<id>_video.ts
         elif self.role == "pub":
             print(f"Launching publisher {self.container_name}")
             launch_cmd += "examples/z_pub"
@@ -327,7 +327,7 @@ class Node():
                 container_project_dir = os.path.abspath(os.path.join(os.getcwd(), '..'))
                 host_path = host_path.replace(container_project_dir, host_project_dir, 1)
             volume_arg = f"-v {host_path}:/zenoh"
-        volume_arg += f" -v {os.path.abspath('apps')}:/apps"  # own apps (apps/zenoh_apps)
+        volume_arg += f" -v {os.path.abspath('apps')}:/apps"  # own apps (apps/zenoh_apps, apps/mqtt_apps) + test video (apps/video)
         # run folder as /out for app output files (--mount: the ':' in the timestamp breaks -v)
         volume_arg += f" --mount type=bind,src={os.path.abspath(base_dir)},dst=/out"
 

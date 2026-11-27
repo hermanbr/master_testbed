@@ -31,7 +31,7 @@ TapBridge modes:
 TAP names: tap_<node>_<endpoint index>, must match NETWORK_CONFIG.json5.
 */
 
-NS_LOG_COMPONENT_DEFINE("ZenohDumbbellWifi");
+NS_LOG_COMPONENT_DEFINE("DumbbellWifi");
 
 // Give a STA a fixed MAC (must be done before association, i.e. before Run)
 static void

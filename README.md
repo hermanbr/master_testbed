@@ -13,9 +13,9 @@ python3
 * scripts
     * Defines topology and scripts to build and run testbed
 * zenoh
-    * network protocol
-* zenohd-auto-deploy
-    * Program that deploys zenoh containers with TAP interfaces to connect to ns-3 ghost nodes
+    * network protocol (submodule)
+* deploy
+    * Program that deploys the protocol containers (Zenoh or MQTT) with TAP interfaces to connect to ns-3 ghost nodes
 
 
 
@@ -23,4 +23,4 @@ python3
 To define a topology one must create one file for the ns-3 network, and one for the network nodes. These are placed in ```scripts/topology/<experiment_name>```.
 
 
-The ns-3 topology is made by moving a zenoh.cc file into the ns-3-dev/scratch folder so its autumatically compiled when building with ```./ns3 build```. 
+The ns-3 topology is made by moving a ns3-topology.cc file into the ns-3-dev/scratch folder so its autumatically compiled when building with ```./ns3 build```. 

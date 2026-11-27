@@ -115,7 +115,7 @@ main(int argc, char* argv[])
     NetDeviceContainer devices = wifi.Install(wifiPhy, wifiMac, nodes);
 
     //
-    // Give each WiFi device its container's MAC (02:00:00:00:<node>:00, set by launch_routers.py).
+    // Give each WiFi device its container's MAC (02:00:00:00:<node>:00, set by launch_nodes.py).
     // TapBridge UseLocal later calls SetAddress with the learned MAC, but WifiMac::SetAddress doesn't
     // update the frame exchange manager (-> NS_ASSERT linkId.has_value()). Setting both here means
     // that later call doesn't change anything.

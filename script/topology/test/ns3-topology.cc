@@ -70,7 +70,7 @@ int main(int argc, char* argv[]) {
 
   // ------------------------------
   // TapBridge 對接（UseBridge 模式）
-  // tap 名稱要與 run_zenoh.sh 一致
+  // tap 名稱要與 run_nodes.sh 一致
   // ------------------------------
   TapBridgeHelper tb;
   tb.SetAttribute("Mode", StringValue("UseBridge"));

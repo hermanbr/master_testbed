@@ -13,7 +13,7 @@ const CHUNK: usize = 188 * 348; // whole MPEG-TS packets (188 B), ~64 KiB
 
 #[tokio::main]
 async fn main() {
-    let file = common::arg("-f", "/apps/zenoh_apps/video_tree_and_sun.ts");
+    let file = common::arg("-f", "/apps/video/video_tree_and_sun.ts");
     let bitrate: f64 = common::arg("-b", "3200000").parse().unwrap();
     let video = std::fs::read(&file).expect("cannot read video file");
     let pause = Duration::from_secs_f64(CHUNK as f64 * 8.0 / bitrate); // real-time pacing
