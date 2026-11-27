@@ -1,0 +1,45 @@
+{
+    /// Specify any name for the experiment. Logs and data will be stored under /experiment_data/<your_experiment_name>
+    experiment: "<your_experiment_name>",
+
+    /// Docker image used to run the zenohd instance
+    docker_image: {
+        tag: "<your_zenohd_docker_image>:<tag>",
+        /// Set to true to pull a fresh copy of the Docker image
+        clean_first: true
+    },
+
+    /// (Optional) Path to the host zenohd binary, mounted into the container at /zenohd.
+    /// Example: "/home/user/zenoh/target/release/zenohd"
+    // volume: "<host_zenohd_path>",
+
+    routers: {
+        /// Router identifiers (e.g., "1", "2", "3"). Corresponding logs will be zenohd_1.log, zenohd_2.log, ...
+        "1": {
+            /// (Optional) Path to the host zenohd binary, mounted into the container at /zenohd.
+            /// Overrides the global volume setting if present.
+            // volume: "<host_zenohd_path>",
+
+            /// Zenoh runtime identifier (unsigned 128-bit integer in lowercase hexadecimal)
+            /// If "set" is false, a random unique identifier will be generated
+            zid: {
+                set: true,
+                value: "<unique_hexadecimal_id>"
+            },
+            /// Multiple listening endpoints allowed
+            /// Format per item: "<proto>/<address>:<port>"
+            /// NOTE: zenohd in Docker listens on 7447 internally.
+            /// For each host port below, ensure it's mapped to container 7447.
+            listen_endpoints: [
+                "<proto>/<addressA>:<portA>",
+                // ... add more as needed
+            ],
+        },
+    },
+    /// (Optional) Link map when you have multiple interfaces.
+    /// a_idx / b_idx are indices into each router's listen_endpoints array.
+    links: [
+        { a: "1", a_idx: <index_on_router1>, b: "2", b_idx: <index_on_router2> },
+        // ... add more as needed
+    ]
+}
